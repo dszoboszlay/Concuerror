@@ -861,7 +861,11 @@ run_built_in(erlang, SendAfter, 3, [Timeout, Dest, Msg], Info)
      is_integer(Timeout) andalso
      Timeout >= 0),
   #concuerror_info{
-     event = Event, processes = Processes, timeout = Wait, timers = Timers
+     after_timeout = AfterTimeout,
+     event = Event,
+     processes = Processes,
+     timeout = Wait,
+     timers = Timers
     } = Info,
   #event{event_info = EventInfo} = Event,
   {Ref, NewInfo} = get_ref(Info),
@@ -896,8 +900,13 @@ run_built_in(erlang, SendAfter, 3, [Timeout, Dest, Msg], Info)
   ets:insert(Timers, {Ref, Pid, Dest}),
   TimerFun =
     fun() ->
-        MFArgs = [erlang, send, [Dest, ActualMessage]],
-        catch concuerror_inspect:inspect(call, MFArgs, ignored)
+        {Tag, Args} =
+          if Timeout >= AfterTimeout ->
+              {'receive', [fun (_) -> false end, infinity]};
+             true ->
+              {call, [erlang, send, [Dest, ActualMessage]]}
+          end,
+        catch concuerror_inspect:inspect(Tag, Args, ignored)
     end,
   Pid ! {start, erlang, apply, [TimerFun, []]},
   ok = wait_process(Pid, Wait),
